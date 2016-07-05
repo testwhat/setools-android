@@ -45,7 +45,7 @@ extern "C"
  *  to free memory used by this iterator.
  *  It is important to note that this iterator is only valid as long as
  *  the policy is unmodifed.
- *  @returm 0 on success and < 0 on failure; if the call fails,
+ *  @return 0 on success and < 0 on failure; if the call fails,
  *  errno will be set and *iter will be NULL.
  */
 	extern int qpol_policy_get_role_allow_iter(const qpol_policy_t * policy, qpol_iterator_t ** iter);
@@ -82,7 +82,7 @@ extern "C"
  *  to free memory used by this iterator.
  *  It is important to note that this iterator is only valid as long as
  *  the policy is unmodifed.
- *  @returm 0 on success and < 0 on failure; if the call fails,
+ *  @return 0 on success and < 0 on failure; if the call fails,
  *  errno will be set and *iter will be NULL.
  */
 	extern int qpol_policy_get_role_trans_iter(const qpol_policy_t * policy, qpol_iterator_t ** iter);
@@ -110,6 +110,17 @@ extern "C"
  */
 	extern int qpol_role_trans_get_target_type(const qpol_policy_t * policy, const qpol_role_trans_t * rule,
 						   const qpol_type_t ** target);
+
+/**
+ *  Get the object class from a role transition rule.
+ *  @param rule The rule from which to get the object class.
+ *  @param obj_class Pointer in which to store the object class.
+ *  The caller should not free this pointer.
+ *  @return 0 on success and < 0 on failure; if the call fails,
+ *  errno will be set and *target will be NULL.
+ */
+	extern int qpol_role_trans_get_object_class(const qpol_policy_t * policy, const qpol_role_trans_t * rule,
+						    const qpol_class_t ** obj_class);
 
 /**
  *  Get the default role from a role transition rule.

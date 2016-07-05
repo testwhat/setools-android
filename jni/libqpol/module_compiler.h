@@ -1,9 +1,8 @@
-/**
- *  @file
- *
- *  This file is a copy of module_compiler.h from NSA's CVS repository.
- *
- * Author : Joshua Brindle <jbrindle@tresys.com>
+/* This file is a copy of module_compiler.h from checkpolicy 2.4 to support
+ * SETools.
+ */
+
+/* Author : Joshua Brindle <jbrindle@tresys.com>
  *	    Karl MacMillan <kmacmillan@tresys.com>
  *          Jason Tang     <jtang@tresys.com>
  *	Added support for binary policy modules
@@ -12,11 +11,13 @@
  *	This program is free software; you can redistribute it and/or modify
  *  	it under the terms of the GNU General Public License as published by
  *	the Free Software Foundation, version 2.
+ *
  */
 
 #ifndef MODULE_COMPILER_H
 #define MODULE_COMPILER_H
 
+/* Required for SETools libqpol services */
 #ifdef	__cplusplus
 extern "C"
 {
@@ -36,18 +37,23 @@ int define_policy(int pass, int module_header_given);
  * needs to free() the datum), -1 if declarations not allowed, -2 for
  * duplicate declarations, -3 for all else.
  */
-int declare_symbol(uint32_t symbol_type, hashtab_key_t key, hashtab_datum_t datum, uint32_t * dest_value, uint32_t * datum_value);
+int declare_symbol(uint32_t symbol_type,
+		   hashtab_key_t key, hashtab_datum_t datum,
+		   uint32_t * dest_value, uint32_t * datum_value);
 
-role_datum_t *declare_role(void);
+role_datum_t *declare_role(unsigned char isattr);
 type_datum_t *declare_type(unsigned char primary, unsigned char isattr);
 user_datum_t *declare_user(void);
 
 type_datum_t *get_local_type(char *id, uint32_t value, unsigned char isattr);
+role_datum_t *get_local_role(char *id, uint32_t value, unsigned char isattr);
 
 /* Add a symbol to the current avrule_block's require section.  Note
  * that a module may not both declare and require the same symbol.
  * Returns 0 on success, -1 on error. */
-int require_symbol(uint32_t symbol_type, hashtab_key_t key, hashtab_datum_t datum, uint32_t * dest_value, uint32_t * datum_value);
+int require_symbol(uint32_t symbol_type,
+		   hashtab_key_t key, hashtab_datum_t datum,
+		   uint32_t * dest_value, uint32_t * datum_value);
 
 /* Enable a permission for a class within the current avrule_decl.
  * Return 0 on success, -1 if out of memory. */
@@ -60,8 +66,10 @@ int require_class(int pass);
 int require_role(int pass);
 int require_type(int pass);
 int require_attribute(int pass);
+int require_attribute_role(int pass);
 int require_user(int pass);
 int require_bool(int pass);
+int require_tunable(int pass);
 int require_sens(int pass);
 int require_cat(int pass);
 
@@ -109,6 +117,7 @@ int begin_optional_else(int pass);
  * return -1. */
 int end_avrule_block(int pass);
 
+/* Required for SETools libqpol services */
 #ifdef	__cplusplus
 }
 #endif

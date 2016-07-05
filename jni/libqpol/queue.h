@@ -1,10 +1,9 @@
-/**
- * @file
- *
- * This file is a copy of queue.h from NSA's CVS repository.
- *
- * Author : Stephen Smalley, <sds@epoch.ncsc.mil>
+/*
+ * This file is a copy of queue.h from checkpolicy 2.4. There are
+ * NO updates required to support SETools.
  */
+
+/* Author : Stephen Smalley, <sds@epoch.ncsc.mil> */
 
 /* FLASK */
 
@@ -21,14 +20,12 @@ typedef void *queue_element_t;
 
 typedef struct queue_node *queue_node_ptr_t;
 
-typedef struct queue_node
-{
+typedef struct queue_node {
 	queue_element_t element;
 	queue_node_ptr_t next;
 } queue_node_t;
 
-typedef struct queue_info
-{
+typedef struct queue_info {
 	queue_node_ptr_t head;
 	queue_node_ptr_t tail;
 } queue_info_t;
@@ -60,7 +57,9 @@ int queue_map(queue_t, int (*f) (queue_element_t, void *), void *);
    then the element will be removed from the queue and the g
    function will be applied to the element. 
  */
-void queue_map_remove_on_error(queue_t, int (*f) (queue_element_t, void *), void (*g) (queue_element_t, void *), void *);
+void queue_map_remove_on_error(queue_t,
+			       int (*f) (queue_element_t, void *),
+			       void (*g) (queue_element_t, void *), void *);
 
 #endif
 

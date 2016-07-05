@@ -16,9 +16,6 @@
 /* Define to 1 if you have the `bz2' library (-lbz2). */
 #define HAVE_LIBBZ2 1
 
-/* Define to 1 if you have the `selinux' library (-lselinux). */
-/* #undef HAVE_LIBSELINUX */
-
 /* Define to 1 if you have the `sepol' library (-lsepol). */
 #define HAVE_LIBSEPOL 1
 
@@ -31,8 +28,23 @@
 /* sepol's new expand boolmap behavior */
 #define HAVE_SEPOL_BOOLMAP 1
 
+/* if bounds rules are present */
+#define HAVE_SEPOL_BOUNDARY 1
+
+/* if source policy types/attributes are present */
+#define HAVE_SEPOL_CONSTRAINT_NAMES 1
+
+/* if default_user rule present */
+#define HAVE_SEPOL_DEFAULT_TYPE 1
+
 /* if libsepol has errcodes.h */
 #define HAVE_SEPOL_ERRCODES 1
+
+/* if the filename transition rule present */
+#define HAVE_SEPOL_FILENAME_TRANS 1
+
+/* if default_user/role/range rules are present */
+#define HAVE_SEPOL_NEW_OBJECT_DEFAULTS 1
 
 /* if types can be marked as permissive */
 #define HAVE_SEPOL_PERMISSIVE_TYPES 1
@@ -45,6 +57,14 @@
 
 /* if users and roles are mapped during policy expansion */
 #define HAVE_SEPOL_USER_ROLE_MAPPING 1
+
+/* if source policy Xen devicetreecon and iomemcon 64bit are present */
+#define HAVE_SEPOL_XEN_DEVICETREE 1
+/* OR */
+/* #undef HAVE_SEPOL_XEN_DEVICETREE */
+
+/* if source policy ioctl white listing */
+#define HAVE_SEPOL_XPERM_IOCTL 1
 
 /* Define to 1 if stdbool.h conforms to C99. */
 #define HAVE_STDBOOL_H 1
@@ -87,9 +107,6 @@
 
 /* libsefs version */
 #define LIBSEFS_VERSION_STRING "4.0.4"
-
-/* enable libselinux-specific code */
-/* #undef LIBSELINUX */
 
 /* link programs using shared libraries */
 #define LINK_SHARED 1
@@ -135,7 +152,7 @@
 /* #undef SEPOL_ENOMEM */
 
 /* maximum policy version supported by libsepol */
-#define SEPOL_POLICY_VERSION_MAX 27
+#define SEPOL_POLICY_VERSION_MAX 29
 
 /* Define to 1 if you have the ANSI C header files. */
 #define STDC_HEADERS 1
@@ -184,8 +201,13 @@
    `char[]'. */
 #define YYTEXT_POINTER 1
 
+/* Enable large inode numbers on Mac OS X 10.5.  */
+#ifndef _DARWIN_USE_64_BIT_INODE
+# define _DARWIN_USE_64_BIT_INODE 1
+#endif
+
 /* Number of bits in a file offset, on hosts where this is settable. */
-#define _FILE_OFFSET_BITS 64
+/* #undef _FILE_OFFSET_BITS */
 
 /* Define for large files, on AIX-style hosts. */
 /* #undef _LARGE_FILES */

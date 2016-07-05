@@ -778,9 +778,16 @@ int qpol_constraint_expr_node_get_names_iter(const qpol_policy_t * policy, const
 		errno = ENOMEM;
 		return STATUS_ERR;
 	}
+
+	unsigned int policy_version;
+	if (qpol_policy_get_policy_version(policy, &policy_version))
+		return STATUS_ERR;
+
 	if (internal_expr->attr & QPOL_CEXPR_SYM_TYPE) {
-		if (policy_type == QPOL_POLICY_KERNEL_BINARY) {
+		if (policy_type == QPOL_POLICY_KERNEL_BINARY && policy_version <= 28) {
 			cns->inc = &(internal_expr->names);
+		} else if (policy_type == QPOL_POLICY_KERNEL_BINARY && policy_version > 28) {
+			cns->inc = &(internal_expr->type_names->types);
 		} else {
 			cns->inc = &(internal_expr->type_names->types);
 			cns->sub = &(internal_expr->type_names->negset);
@@ -910,7 +917,6 @@ static size_t class_constr_state_size(const qpol_iterator_t * iter)
 
 int qpol_class_get_constraint_iter(const qpol_policy_t * policy, const qpol_class_t * obj_class, qpol_iterator_t ** constr)
 {
-	const policydb_t *db = NULL;
 	class_constr_state_t *ccs = NULL;
 	class_datum_t *internal_class = NULL;
 	int error = 0;
@@ -924,7 +930,6 @@ int qpol_class_get_constraint_iter(const qpol_policy_t * policy, const qpol_clas
 		return STATUS_ERR;
 	}
 
-	db = &policy->p->p;
 	internal_class = (class_datum_t *) obj_class;
 
 	ccs = calloc(1, sizeof(class_constr_state_t));
@@ -947,7 +952,6 @@ int qpol_class_get_constraint_iter(const qpol_policy_t * policy, const qpol_clas
 
 int qpol_class_get_validatetrans_iter(const qpol_policy_t * policy, const qpol_class_t * obj_class, qpol_iterator_t ** vtrans)
 {
-	const policydb_t *db = NULL;
 	class_constr_state_t *ccs = NULL;
 	class_datum_t *internal_class = NULL;
 	int error = 0;
@@ -961,7 +965,6 @@ int qpol_class_get_validatetrans_iter(const qpol_policy_t * policy, const qpol_c
 		return STATUS_ERR;
 	}
 
-	db = &policy->p->p;
 	internal_class = (class_datum_t *) obj_class;
 
 	ccs = calloc(1, sizeof(class_constr_state_t));

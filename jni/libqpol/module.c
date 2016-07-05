@@ -31,7 +31,6 @@
 #include <string.h>
 
 #include <qpol/module.h>
-#include <qpol/util.h>
 #include "qpol_internal.h"
 
 #include <sepol/policydb.h>
@@ -45,7 +44,6 @@ int qpol_module_create_from_file(const char *path, qpol_module_t ** module)
 	int error = 0;
 	char *tmp = NULL;
 	char *data = NULL;
-	ssize_t size;
 
 	if (module)
 		*module = NULL;
@@ -74,22 +72,12 @@ int qpol_module_create_from_file(const char *path, qpol_module_t ** module)
 		error = errno;
 		goto err;
 	}
-	size = qpol_bunzip(infile, &data);
-
-	if (size > 0) {
-		if (!qpol_is_data_mod_pkg(data)) {
-			error = ENOTSUP;
-			goto err;
-		}
-		sepol_policy_file_set_mem(spf, data, size);
-	} else {
-		if (!qpol_is_file_mod_pkg(infile)) {
-			error = ENOTSUP;
-			goto err;
-		}
-		rewind(infile);
-		sepol_policy_file_set_fp(spf, infile);
-	}
+    if (!qpol_is_file_mod_pkg(infile)) {
+        error = ENOTSUP;
+        goto err;
+    }
+    rewind(infile);
+    sepol_policy_file_set_fp(spf, infile);
 
 	if (sepol_module_package_create(&smp)) {
 		error = EIO;
@@ -102,14 +90,7 @@ int qpol_module_create_from_file(const char *path, qpol_module_t ** module)
 	}
 	free(tmp);
 	tmp = NULL;
-	if (size > 0) {
-		// Re setting the memory location has the effect of rewind
-		// API is not accessible from here to explicitly "rewind" the
-		// in-memory file.
-		sepol_policy_file_set_mem(spf, data, size);
-	} else {
-		rewind(infile);
-	}
+    rewind(infile);
 
 	if (sepol_module_package_read(smp, spf, 0)) {
 		error = EIO;

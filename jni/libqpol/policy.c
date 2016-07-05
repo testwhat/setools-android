@@ -28,8 +28,6 @@
 
 #include "qpol_internal.h"
 #include <assert.h>
-#include <byteswap.h>
-#include <endian.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -37,8 +35,15 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <asm/types.h>
-#include <unistd.h>
+
+#ifdef DARWIN
+# include <qpol/linux_types.h>
+# include <machine/endian.h>
+# include <sys/types.h>
+#else
+# include <endian.h>
+# include <asm/types.h>
+#endif
 
 #include <sepol/debug.h>
 #include <sepol/handle.h>
@@ -74,6 +79,7 @@ extern unsigned long policydb_lineno;
 extern char source_file[];
 extern policydb_t *policydbp;
 extern int mlspol;
+extern int xenpol;
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #define cpu_to_le16(x) (x)
@@ -99,6 +105,7 @@ typedef struct fbuf
 	int err;
 } qpol_fbuf_t;
 
+__attribute__ ((format(printf, 4, 0)))
 static void qpol_handle_route_to_callback(void *varg
 					  __attribute__ ((unused)), const qpol_policy_t * p, int level, const char *fmt,
 					  va_list va_args)
@@ -112,6 +119,7 @@ static void qpol_handle_route_to_callback(void *varg
 	p->fn(p->varg, p, level, fmt, va_args);
 }
 
+__attribute__ ((format(printf, 3, 4)))
 static void sepol_handle_route_to_callback(void *varg, sepol_handle_t * sh, const char *fmt, ...)
 {
 	va_list ap;
@@ -130,6 +138,7 @@ static void sepol_handle_route_to_callback(void *varg, sepol_handle_t * sh, cons
 	va_end(ap);
 }
 
+__attribute__ ((format(printf, 3, 4)))
 void qpol_handle_msg(const qpol_policy_t * p, int level, const char *fmt, ...)
 {
 	va_list ap;
@@ -148,6 +157,7 @@ void qpol_handle_msg(const qpol_policy_t * p, int level, const char *fmt, ...)
 	va_end(ap);
 }
 
+__attribute__ ((format(printf, 4, 0)))
 static void qpol_handle_default_callback(void *varg __attribute__ ((unused)), const qpol_policy_t * p
 					 __attribute__ ((unused)), int level, const char *fmt, va_list va_args)
 {
@@ -174,7 +184,7 @@ static void qpol_handle_default_callback(void *varg __attribute__ ((unused)), co
 	fprintf(stderr, "\n");
 }
 
-static int read_source_policy(qpol_policy_t * qpolicy, char *progname, int options)
+static int read_source_policy(qpol_policy_t * qpolicy, const char *progname, int options)
 {
 	int load_rules = 1;
 	if (options & QPOL_POLICY_OPTION_NO_RULES)
@@ -186,6 +196,7 @@ static int read_source_policy(qpol_policy_t * qpolicy, char *progname, int optio
 
 	policydbp = &qpolicy->p->p;
 	mlspol = policydbp->mls;
+	xenpol = policydbp->target_platform;
 
 	INFO(qpolicy, "%s", "Parsing policy. (Step 1 of 5)");
 	init_scanner();
@@ -195,7 +206,7 @@ static int read_source_policy(qpol_policy_t * qpolicy, char *progname, int optio
 		ERR(qpolicy, "%s:  error(s) encountered while parsing configuration\n", progname);
 		queue_destroy(id_queue);
 		id_queue = NULL;
-//		errno = EIO;
+		errno = EINVAL;
 		return -1;
 	}
 	/* rewind the pointer */
@@ -206,13 +217,13 @@ static int read_source_policy(qpol_policy_t * qpolicy, char *progname, int optio
 		ERR(qpolicy, "%s:  error(s) encountered while parsing configuration\n", progname);
 		queue_destroy(id_queue);
 		id_queue = NULL;
-//		errno = EIO;
+		errno = EINVAL;
 		return -1;
 	}
 	queue_destroy(id_queue);
 	id_queue = NULL;
 	if (policydb_errors) {
-//		errno = EIO;
+		errno = EINVAL;
 		return -1;
 	}
 	return 0;
@@ -341,7 +352,6 @@ int qpol_is_file_binpol(FILE * fp)
 
 int qpol_is_data_mod_pkg(char * data)
 {
-	size_t sz;
 	__u32 ubuf;
 
 	memcpy(&ubuf, data, sizeof(__u32));
@@ -376,13 +386,6 @@ int qpol_is_file_mod_pkg(FILE * fp)
 static int infer_policy_version(qpol_policy_t * policy)
 {
 	policydb_t *db = NULL;
-	const qpol_class_t *obj_class = NULL;
-	qpol_iterator_t *iter = NULL;
-	qpol_fs_use_t *fsuse = NULL;
-	qpol_range_trans_t *rangetrans = NULL;
-	uint32_t behavior = 0;
-	size_t nvtrans = 0, fsusexattr = 0;
-	const char *obj_name = NULL;
 
 	if (!policy) {
 		ERR(policy, "%s", strerror(EINVAL));
@@ -397,94 +400,11 @@ static int infer_policy_version(qpol_policy_t * policy)
 		return STATUS_SUCCESS;
 	}
 
-	/* check fs_use for xattr and psid */
-	qpol_policy_get_fs_use_iter(policy, &iter);
-	for (; !qpol_iterator_end(iter); qpol_iterator_next(iter)) {
-		qpol_iterator_get_item(iter, (void **)&fsuse);
-		qpol_fs_use_get_behavior(policy, fsuse, &behavior);
-		/* not possible to have xattr and psid in same policy */
-		if (behavior == QPOL_FS_USE_XATTR) {
-			fsusexattr = 1;
-			break;
-		} else if (behavior == QPOL_FS_USE_PSID) {
-			qpol_iterator_destroy(&iter);
-			db->policyvers = 12;
-			return STATUS_SUCCESS;
-		}
-	}
-	qpol_iterator_destroy(&iter);
-
-#if defined(HAVE_SEPOL_PERMISSIVE_TYPES) || defined(HAVE_SEPOL_POLICYCAPS)
-	ebitmap_node_t *node = NULL;
-	unsigned int i = 0;
-#endif
-
-	/* 23 : there exists at least one type that is permissive */
-#ifdef HAVE_SEPOL_PERMISSIVE_TYPES
-	ebitmap_for_each_bit(&db->permissive_map, node, i) {
-		if (ebitmap_get_bit(&db->permissive_map, i)) {
-			db->policyvers = 23;
-			return STATUS_SUCCESS;
-		}
-	}
-#endif
-
-	/* 22 : there exists at least one policy capability */
-#ifdef HAVE_SEPOL_POLICYCAPS
-	ebitmap_for_each_bit(&db->policycaps, node, i) {
-		if (ebitmap_get_bit(&db->policycaps, i)) {
-			db->policyvers = 22;
-			return STATUS_SUCCESS;
-		}
-	}
-#endif
-
-	/* 21 : object classes other than process for range_transitions */
-	qpol_policy_get_range_trans_iter(policy, &iter);
-	for (; !qpol_iterator_end(iter); qpol_iterator_next(iter)) {
-		qpol_iterator_get_item(iter, (void **)&rangetrans);
-		qpol_range_trans_get_target_class(policy, rangetrans, &obj_class);
-		qpol_class_get_name(policy, obj_class, &obj_name);
-		if (strcmp(obj_name, "process")) {
-			db->policyvers = 21;
-			qpol_iterator_destroy(&iter);
-			return STATUS_SUCCESS;
-		}
-	}
-	qpol_iterator_destroy(&iter);
-
-	/* 19 & 20 : mls and validatetrans statements added */
-	qpol_policy_get_validatetrans_iter(policy, &iter);
-	qpol_iterator_get_size(iter, &nvtrans);
-	qpol_iterator_destroy(&iter);
-	if (db->mls || nvtrans) {
-		db->policyvers = 19;
-	}
-
-	/* 18 : the netlink_audit_socket class added */
-	else if (hashtab_search(db->p_classes.table, (const hashtab_key_t)"netlink_audit_socket")) {
-		db->policyvers = 18;
-	}
-
-	/* 17 : IPv6 nodecon statements added */
-	else if (db->ocontexts[OCON_NODE6]) {
-		db->policyvers = 17;
-	}
-
-	/* 16 : conditional policy added */
-	else if (db->p_bool_val_to_name && db->p_bool_val_to_name[0]) {
-		db->policyvers = 16;
-
-	}
-	/* 15 */
-	else if (fsusexattr) {
-		db->policyvers = 15;
-	}
-
-	/* 12 */
-	else {
-		db->policyvers = 12;
-	}
+	/* Do not try to infer policy version, as it is
+	 * a compile-time setting, and the policy can
+	 * be downgraded.
+	 */
+	db->policyvers = POLICYDB_VERSION_MAX;
 
 	return STATUS_SUCCESS;
 }
@@ -623,7 +543,7 @@ static int union_multiply_declared_symbols(qpol_policy_t * policy) {
 			avrule_decl_t *decl = blk->enabled;
 			if (!decl)
 				continue; /* disabled */
-			type_datum_t *internal_datum = hashtab_search(decl->symtab[SYM_TYPES].table, (const hashtab_key_t)name);
+			type_datum_t *internal_datum = hashtab_search(decl->symtab[SYM_TYPES].table, (hashtab_key_t)name);
 			if (internal_datum == NULL) {
 				continue; /* not declared here */
 			}
@@ -643,6 +563,7 @@ static int union_multiply_declared_symbols(qpol_policy_t * policy) {
 	}
 	for (; !qpol_iterator_end(iter); qpol_iterator_next(iter)) {
 		role_datum_t *role;
+		uint32_t i;
 		if (qpol_iterator_get_item(iter, (void**)&role)) {
 			error = errno;
 			goto err;
@@ -653,17 +574,17 @@ static int union_multiply_declared_symbols(qpol_policy_t * policy) {
 			goto err;
 		}
 		policydb_t *db = &policy->p->p;
-		scope_datum_t* scope_datum = hashtab_search(db->scope[SYM_ROLES].table, (const hashtab_key_t)name);
+		scope_datum_t* scope_datum = hashtab_search(db->scope[SYM_ROLES].table, (hashtab_key_t)name);
 		if (scope_datum == NULL) {
 			ERR(policy, "could not find scope datum for role %s", name);
 			error = ENOENT;
 			goto err;
 		}
-		for (uint32_t i = 0; i < scope_datum->decl_ids_len; i++)
+		for (i = 0; i < scope_datum->decl_ids_len; i++)
 		{
 			if (db->decl_val_to_struct[scope_datum->decl_ids[i] - 1]->enabled == 0)
 				continue; /* block is disabled */
-			role_datum_t *internal_datum = hashtab_search(db->decl_val_to_struct[scope_datum->decl_ids[i] - 1]->symtab[SYM_ROLES].table, (const hashtab_key_t)name);
+			role_datum_t *internal_datum = hashtab_search(db->decl_val_to_struct[scope_datum->decl_ids[i] - 1]->symtab[SYM_ROLES].table, (hashtab_key_t)name);
 			if (internal_datum == NULL) {
 				continue; /* not declared here */
 			}
@@ -683,6 +604,7 @@ static int union_multiply_declared_symbols(qpol_policy_t * policy) {
 	}
 	for (; !qpol_iterator_end(iter); qpol_iterator_next(iter)) {
 		user_datum_t *user;
+		uint32_t i;
 		if (qpol_iterator_get_item(iter, (void**)&user)) {
 			error = errno;
 			goto err;
@@ -693,17 +615,17 @@ static int union_multiply_declared_symbols(qpol_policy_t * policy) {
 			goto err;
 		}
 		policydb_t *db = &policy->p->p;
-		scope_datum_t* scope_datum = hashtab_search(db->scope[SYM_USERS].table, (const hashtab_key_t)name);
+		scope_datum_t* scope_datum = hashtab_search(db->scope[SYM_USERS].table, (hashtab_key_t)name);
 		if (scope_datum == NULL) {
 			ERR(policy, "could not find scope datum for user %s", name);
 			error = ENOENT;
 			goto err;
 		}
-		for (uint32_t i = 0; i < scope_datum->decl_ids_len; i++)
+		for (i = 0; i < scope_datum->decl_ids_len; i++)
 		{
 			if (db->decl_val_to_struct[scope_datum->decl_ids[i] - 1]->enabled == 0)
 				continue; /* block is disabled */
-			user_datum_t *internal_datum = hashtab_search(db->decl_val_to_struct[scope_datum->decl_ids[i] -1 ]->symtab[SYM_USERS].table, (const hashtab_key_t)name);
+			user_datum_t *internal_datum = hashtab_search(db->decl_val_to_struct[scope_datum->decl_ids[i] -1 ]->symtab[SYM_USERS].table, (hashtab_key_t)name);
 			if (internal_datum == NULL) {
 				continue; /* not declared here */
 			}
@@ -735,7 +657,7 @@ extern void qpol_extended_image_destroy(struct qpol_extended_image **ext);
  * for version 1.3; this symbol name is not exported.
  * @see qpol_policy_rebuild()
  */
-int qpol_policy_rebuild_opt(qpol_policy_t * policy, const int options)
+int qpol_policy_rebuild(qpol_policy_t * policy, const int options)
 {
 	sepol_policydb_t *old_p = NULL;
 	sepol_policydb_t **modules = NULL;
@@ -868,37 +790,6 @@ int qpol_policy_rebuild_opt(qpol_policy_t * policy, const int options)
 	return STATUS_ERR;
 }
 
-int qpol_policy_rebuild(qpol_policy_t * policy, int options)
-{
-	return qpol_policy_rebuild_opt(policy, options);
-}
-
-/**
- * @brief Internal version of qpol_policy_rebuild() version 1.2 or earlier
- * @deprecated use the 1.3 version.
- * @see qpol_policy_rebuild()
- */
-int qpol_policy_rebuild_old(qpol_policy_t * policy)
-{
-	if (!policy) {
-		ERR(NULL, "%s", strerror(EINVAL));
-		errno = EINVAL;
-		return STATUS_ERR;
-	}
-
-	/* fail if not a modular policy */
-	if (policy->type != QPOL_POLICY_MODULE_BINARY) {
-		ERR(policy, "%s", strerror(ENOTSUP));
-		errno = ENOTSUP;
-		return STATUS_ERR;
-	}
-
-	if (!policy->modified)
-		return STATUS_SUCCESS;
-
-	return qpol_policy_rebuild_opt(policy, policy->options);
-}
-
 /**
  * @brief Internal version of qpol_policy_open_from_file() version 1.3
  *
@@ -906,7 +797,7 @@ int qpol_policy_rebuild_old(qpol_policy_t * policy)
  * for version 1.3; this symbol name is not exported.
  * @see qpol_policy_open_from_file()
  */
-int qpol_policy_open_from_file_opt(const char *path, qpol_policy_t ** policy, qpol_callback_fn_t fn, void *varg, const int options)
+int qpol_policy_open_from_file(const char *path, qpol_policy_t ** policy, qpol_callback_fn_t fn, void *varg, const int options)
 {
 	int error = 0, retv = -1;
 	FILE *infile = NULL;
@@ -995,7 +886,7 @@ int qpol_policy_open_from_file_opt(const char *path, qpol_policy_t ** policy, qp
 		}
 		/* *policy now owns mod */
 		mod = NULL;
-		if (qpol_policy_rebuild_opt(*policy, options)) {
+		if (qpol_policy_rebuild(*policy, options)) {
 			error = errno;
 			goto err;
 		}
@@ -1084,16 +975,6 @@ int qpol_policy_open_from_file_opt(const char *path, qpol_policy_t ** policy, qp
 	return -1;
 }
 
-int qpol_policy_open_from_file(const char *path, qpol_policy_t ** policy, qpol_callback_fn_t fn, void *varg, const int options)
-{
-	return qpol_policy_open_from_file_opt(path, policy, fn, varg, options);
-}
-
-int qpol_policy_open_from_file_no_rules(const char *path, qpol_policy_t ** policy, qpol_callback_fn_t fn, void *varg)
-{
-	return qpol_policy_open_from_file_opt(path, policy, fn, varg, QPOL_POLICY_OPTION_NO_RULES);
-}
-
 /**
  * @brief Internal version of qpol_policy_open_from_memory() version 1.3
  *
@@ -1101,7 +982,7 @@ int qpol_policy_open_from_file_no_rules(const char *path, qpol_policy_t ** polic
  * for version 1.3; this symbol name is not exported.
  * @see qpol_policy_open_from_memory()
  */
-int qpol_policy_open_from_memory_opt(qpol_policy_t ** policy, const char *filedata, size_t size, qpol_callback_fn_t fn, void *varg,
+int qpol_policy_open_from_memory(qpol_policy_t ** policy, const char *filedata, size_t size, qpol_callback_fn_t fn, void *varg,
 				     const int options)
 {
 	int error = 0;
@@ -1192,34 +1073,6 @@ int qpol_policy_open_from_memory_opt(qpol_policy_t ** policy, const char *fileda
 	errno = error;
 	return -1;
 
-}
-
-#if LINK_SHARED == 0
-int qpol_policy_open_from_memory(qpol_policy_t ** policy, const char *filedata, size_t size, qpol_callback_fn_t fn, void *varg,
-				 const int options)
-{
-	return qpol_policy_open_from_memory_opt(policy, filedata, size, fn, varg, options);
-}
-#endif
-
-/**
- * @brief Internal version of qpol_policy_open_from_file() version 1.2 or earlier
- * @deprecated use the 1.3 version.
- * @see qpol_policy_open_from_file()
- */
-int qpol_policy_open_from_file_old(const char *path, qpol_policy_t ** policy, qpol_callback_fn_t fn, void *varg)
-{
-	return qpol_policy_open_from_file(path, policy, fn, varg, 0);
-}
-
-/**
- * @brief Internal version of qpol_policy_open_from_memory() version 1.2 or earlier
- * @deprecated use the 1.3 version.
- * @see qpol_policy_open_from_memory()
- */
-int qpol_policy_open_from_memory_old(qpol_policy_t ** policy, const char *filedata, size_t size, qpol_callback_fn_t fn, void *varg)
-{
-	return qpol_policy_open_from_memory_opt(policy, filedata, size, fn, varg, 0);
 }
 
 void qpol_policy_destroy(qpol_policy_t ** policy)
@@ -1455,6 +1308,46 @@ int qpol_policy_get_policy_version(const qpol_policy_t * policy, unsigned int *v
 	return STATUS_SUCCESS;
 }
 
+int qpol_policy_get_policy_handle_unknown(const qpol_policy_t * policy, unsigned int *handle_unknown)
+{
+	policydb_t *db;
+
+	if (handle_unknown != NULL)
+		*handle_unknown = 0;
+
+	if (policy == NULL || handle_unknown == NULL) {
+		ERR(policy, "%s", strerror(EINVAL));
+		errno = EINVAL;
+		return STATUS_ERR;
+	}
+
+	db = &policy->p->p;
+	*handle_unknown = db->handle_unknown;
+
+	return STATUS_SUCCESS;
+}
+
+int qpol_policy_get_target_platform(const qpol_policy_t *policy,
+					    int *target_platform)
+{
+	policydb_t *db;
+
+	if (target_platform != NULL)
+		*target_platform = 0;
+
+	if (policy == NULL || target_platform == NULL) {
+		ERR(policy, "%s", strerror(EINVAL));
+		errno = EINVAL;
+		return STATUS_ERR;
+	}
+
+	db = &policy->p->p;
+
+	*target_platform = db->target_platform;
+
+	return STATUS_SUCCESS;
+}
+
 int qpol_policy_get_type(const qpol_policy_t * policy, int *type)
 {
 	if (!policy || !type) {
@@ -1520,6 +1413,63 @@ int qpol_policy_has_capability(const qpol_policy_t * policy, qpol_capability_e c
 		if (version >= 22 && policy->type != QPOL_POLICY_MODULE_BINARY)
 			return 1;
 		if (version >= 7 && policy->type == QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		break;
+	}
+	case QPOL_CAP_BOUNDS:
+	{
+		if (version >= 24 && policy->type != QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		if (version >= 9 && policy->type == QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		break;
+	}
+	case QPOL_CAP_PERMISSIVE:
+	{
+		if (version >= 23 && policy->type != QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		if (version >= 8 && policy->type == QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		break;
+	}
+	case QPOL_CAP_FILENAME_TRANS:
+	{
+		if (version >= 25 && policy->type != QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		if (version >= 11 && policy->type == QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		break;
+	}
+	case QPOL_CAP_ROLETRANS:
+	{
+		if (version >= 26 && policy->type != QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		if (version >= 12 && policy->type == QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		break;
+	}
+	/* This indicates the user, role and range - types were ate 28/16 */
+	case QPOL_CAP_DEFAULT_OBJECTS:
+	{
+		if (version >= 27 && policy->type != QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		if (version >= 15 && policy->type == QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		break;
+	}
+	case QPOL_CAP_DEFAULT_TYPE:
+	{
+		if (version >= 28 && policy->type != QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		if (version >= 16 && policy->type == QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		break;
+	}
+	case QPOL_CAP_XPERM_IOCTL:
+	{
+		if (version >= 30 && policy->type != QPOL_POLICY_MODULE_BINARY)
+			return 1;
+		if (version >= 17 && policy->type == QPOL_POLICY_MODULE_BINARY)
 			return 1;
 		break;
 	}

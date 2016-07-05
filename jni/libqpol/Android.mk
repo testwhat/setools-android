@@ -26,14 +26,17 @@ LOCAL_C_INCLUDES := \
 	$(LOCAL_PATH)/../libsepol/include
 
 LOCAL_SRC_FILES := \
-	avrule_query.c \
+    avrule_query.c \
 	bool_query.c \
+	bounds_query.c \
 	class_perm_query.c \
 	cond_query.c \
 	constraint_query.c \
 	context_query.c \
+	default_object_query.c \
 	expand.c \
 	fs_use_query.c \
+	ftrule_query.c \
 	genfscon_query.c \
 	isid_query.c \
 	iterator.c \
@@ -52,15 +55,15 @@ LOCAL_SRC_FILES := \
 	queue.c \
 	rbacrule_query.c \
 	role_query.c \
-	syn_rule_query.c \
 	terule_query.c \
-	ftrule_query.c \
 	type_query.c \
 	user_query.c \
-	util.c \
 	policy_parse.c \
 	policy_scan.c \
-	glob.c
+	syn_rule_query.c \
+	xen_query.c \
+	glob.c \
+	util.c
 
 LOCAL_STATIC_LIBRARIES := libbz2 libsepol
 

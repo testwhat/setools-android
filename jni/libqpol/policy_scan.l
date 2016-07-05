@@ -1,12 +1,13 @@
-/**
- * @file policy_parse.y
- *
- * This file is based upon checkpolicy/policy_scan.l fram NSA's SVN
- * repository.  It has been modified to support older policy formats.
- *
+/*
+ * This file is a copy of policy_scan.l from checkpolicy 2.4 updated to
+ * support SETools.
+ */
+
+/*
  * Author : Stephen Smalley, <sds@epoch.ncsc.mil> 
- *
- * Updated: David Caplan, <dac@tresys.com>
+ */
+
+/* Updated: David Caplan, <dac@tresys.com>
  *
  * 	Added conditional policy language extensions
  *
@@ -22,6 +23,7 @@
 
 /* FLASK */
 
+/* Required for SETools libqpol services */
 %{
 #undef YY_INPUT
 #define YY_INPUT(b, r, ms) (r = qpol_src_yyinput(b, ms))
@@ -33,13 +35,14 @@
 #include <stdint.h>
 #include <string.h>
 
-typedef int (* require_func_t)();
+typedef int (* require_func_t)(void);
 
+/* For SETools libqpol services leave this as policy_parse.h */
 #include "policy_parse.h"
 
 static char linebuf[2][255];
 static unsigned int lno = 0;
-int yywarn(char *msg);
+int yywarn(const char *msg);
 
 void set_source_file(const char *name);
 
@@ -50,17 +53,16 @@ unsigned long policydb_lineno = 1;
 
 unsigned int policydb_errors = 0;
 
+/* These are required for SETools libqpol services */
 /* redefine input so we can read from a string */
 /* borrowed from O'Reilly lex and yacc pg 157 */
 extern char qpol_src_input[];
 extern char *qpol_src_inputptr;/* current position in myinput */
 extern char *qpol_src_inputlim;/* end of data */
 int qpol_src_yyinput(char *buf, int max_size);
-
 %}
 
-%option nounput
-%option noyywrap
+%option noinput nounput noyywrap
 
 %array
 letter  [A-Za-z]
@@ -93,6 +95,10 @@ ROLE |
 role				{ return(ROLE); }
 ROLES |
 roles				{ return(ROLES); }
+ROLEATTRIBUTE |
+roleattribute			{ return(ROLEATTRIBUTE);}
+ATTRIBUTE_ROLE |
+attribute_role			{ return(ATTRIBUTE_ROLE);}
 TYPES |
 types				{ return(TYPES); }
 TYPEALIAS |
@@ -105,6 +111,8 @@ TYPE |
 type				{ return(TYPE); }
 BOOL |
 bool                            { return(BOOL); }
+TUNABLE |
+tunable				{ return(TUNABLE); }
 IF |
 if				{ return(IF); }
 ELSE |
@@ -149,6 +157,14 @@ AUDITDENY |
 auditdeny		        { return(AUDITDENY); }
 DONTAUDIT |
 dontaudit                       { return(DONTAUDIT); }
+ALLOWXPERM |
+allowxperm			{ return(ALLOWXPERM); }
+AUDITALLOWXPERM |
+auditallowxperm			{ return(AUDITALLOWXPERM); }
+DONTAUDITXPERM |
+dontauditxperm			{ return(DONTAUDITXPERM); }
+NEVERALLOWXPERM |
+neverallowxperm			{ return(NEVERALLOWXPERM); }
 SOURCE |
 source			        { return(SOURCE); }
 TARGET |
@@ -186,8 +202,6 @@ netifcon |
 NETIFCON			{ return(NETIFCON);}
 nodecon |                     
 NODECON				{ return(NODECON);}
-fs_use_psid |
-FS_USE_PSID			{ return(FSUSEPSID);}
 pirqcon |
 PIRQCON  		        { return(PIRQCON);}
 iomemcon |
@@ -196,6 +210,8 @@ ioportcon |
 IOPORTCON           		{ return(IOPORTCON);}
 pcidevicecon |
 PCIDEVICECON           		{ return(PCIDEVICECON);}
+devicetreecon |
+DEVICETREECON           	{ return(DEVICETREECON);}
 fs_use_xattr |
 FS_USE_XATTR			{ return(FSUSEXATTR);}
 fs_use_task |
@@ -234,10 +250,26 @@ policycap |
 POLICYCAP			{ return(POLICYCAP); }
 permissive |
 PERMISSIVE			{ return(PERMISSIVE); }
+default_user |
+DEFAULT_USER			{ return(DEFAULT_USER); }
+default_role |
+DEFAULT_ROLE			{ return(DEFAULT_ROLE); }
+default_type |
+DEFAULT_TYPE			{ return(DEFAULT_TYPE); }
+default_range |
+DEFAULT_RANGE			{ return(DEFAULT_RANGE); }
+low-high |
+LOW-HIGH			{ return(LOW_HIGH); }
+high |
+HIGH				{ return(HIGH); }
+low |
+LOW				{ return(LOW); }
 "/"({alnum}|[_\.\-/])*	        { return(PATH); }
-\"({alnum}|[_\.\-])+\"			{ return(FILENAME); }
+\""/"[ !#-~]*\" 		{ return(QPATH); }
+\"({alnum}|[_\.\-\+\~\: ])+\"	{ return(FILENAME); }
 {letter}({alnum}|[_\-])*([\.]?({alnum}|[_\-]))*	{ return(IDENTIFIER); }
 {digit}+|0x{hexval}+            { return(NUMBER); }
+{alnum}*{letter}{alnum}*        { return(FILESYSTEM); }
 {digit}{1,3}(\.{digit}{1,3}){3}    { return(IPV4_ADDR); }
 {hexval}{0,4}":"{hexval}{0,4}":"({hexval}|[:.])*  { return(IPV6_ADDR); }
 {digit}+(\.({alnum}|[_.])*)?    { return(VERSION_IDENTIFIER); }
@@ -266,7 +298,7 @@ PERMISSIVE			{ return(PERMISSIVE); }
 "*"				{ return(yytext[0]); } 
 .                               { yywarn("unrecognized character");}
 %%
-int yyerror(char *msg)
+int yyerror(const char *msg)
 {
 	if (source_file[0])
 		fprintf(stderr, "%s:%ld:",
@@ -282,7 +314,7 @@ int yyerror(char *msg)
 	return -1;
 }
 
-int yywarn(char *msg)
+int yywarn(const char *msg)
 {
 	if (source_file[0])
 		fprintf(stderr, "%s:%ld:",
@@ -302,8 +334,11 @@ void set_source_file(const char *name)
 	source_lineno = 1;
 	strncpy(source_file, name, sizeof(source_file)-1); 
 	source_file[sizeof(source_file)-1] = '\0';
+	if (strlen(source_file) && source_file[strlen(source_file)-1] == '"')
+		source_file[strlen(source_file)-1] = '\0';
 }
 
+/* Required for SETools libqpol services */
 int qpol_src_yyinput(char *buf, int max_size)
 {
 	int n = max_size < (qpol_src_inputlim - qpol_src_inputptr) ? max_size : (qpol_src_inputlim - qpol_src_inputptr);
@@ -315,6 +350,7 @@ int qpol_src_yyinput(char *buf, int max_size)
 	return n;
 }
 
+/* Required for SETools libqpol services */
 void init_scanner(void)
 {
 	yy_flush_buffer(YY_CURRENT_BUFFER);

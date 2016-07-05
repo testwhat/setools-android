@@ -200,6 +200,10 @@ static int qpol_policy_build_attrs_from_map(qpol_policy_t * policy)
 	memset(&buff, 0, 10 * sizeof(char));
 
 	for (i = 0; i < db->p_types.nprim; i++) {
+		/* skip types */
+		if (db->type_val_to_struct[i]->flavor == TYPE_TYPE)
+			continue;
+
 		count = 0;
 		ebitmap_for_each_bit(&db->attr_type_map[i], node, bit) {
 			if (ebitmap_node_get_bit(node, bit))
@@ -208,6 +212,7 @@ static int qpol_policy_build_attrs_from_map(qpol_policy_t * policy)
 		if (count == 0) {
 			continue;
 		}
+
 		/* first create a new type_datum_t for the attribute,
 		 * with the attribute's type_list consisting of types
 		 * with this attribute */
@@ -222,7 +227,7 @@ static int qpol_policy_build_attrs_from_map(qpol_policy_t * policy)
 		}
 
 		/* Already exists */
-		else 
+		else
 			tmp_name = db->p_type_val_to_name[i];
 
 		tmp_type = calloc(1, sizeof(type_datum_t));
@@ -302,6 +307,7 @@ static int qpol_policy_build_attrs_from_map(qpol_policy_t * policy)
  *  errno will be set. On failure, the policy state may be inconsistent
  *  especially in the case where the hashtab functions return the error.
  */
+
 static int qpol_policy_fill_attr_holes(qpol_policy_t * policy)
 {
 	policydb_t *db = NULL;
@@ -366,7 +372,7 @@ static int qpol_policy_fill_attr_holes(qpol_policy_t * policy)
 	return STATUS_ERR;
 }
 
-static char *sidnames[] = {
+static const char *const sidnames[] = {
 	"undefined",
 	"kernel",
 	"security",
@@ -1063,6 +1069,7 @@ int policy_extend(qpol_policy_t * policy)
 		error = errno;
 		goto err;
 	}
+
 	if (db->attr_type_map) {
 		retv = qpol_policy_build_attrs_from_map(policy);
 		if (retv) {
@@ -1198,7 +1205,7 @@ int qpol_avrule_get_syn_avrule_iter(const qpol_policy_t * policy, const struct q
 	/* build key */
 	if (!(key = calloc(1, sizeof(qpol_syn_rule_key_t)))) {
 		error = errno;
-		ERR(policy, "%S", strerror(error));
+		ERR(policy, "%s", strerror(error));
 		goto err;
 	}
 
@@ -1299,7 +1306,7 @@ int qpol_terule_get_syn_terule_iter(const qpol_policy_t * policy, const struct q
 	/* build key */
 	if (!(key = calloc(1, sizeof(qpol_syn_rule_key_t)))) {
 		error = errno;
-		ERR(policy, "%S", strerror(error));
+		ERR(policy, "%s", strerror(error));
 		goto err;
 	}
 

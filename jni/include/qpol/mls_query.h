@@ -38,6 +38,7 @@ extern "C"
 	typedef struct qpol_cat qpol_cat_t;
 	typedef struct qpol_mls_range qpol_mls_range_t;
 	typedef struct qpol_mls_level qpol_mls_level_t;
+	typedef struct qpol_semantic_level qpol_semantic_level_t;
 
 #include <qpol/iterator.h>
 #include <qpol/policy.h>
@@ -252,6 +253,15 @@ extern "C"
  */
 	extern int qpol_mls_level_get_cat_iter(const qpol_policy_t * policy, const qpol_mls_level_t * level,
 					       qpol_iterator_t ** cats);
+
+/* semantic levels */
+	extern int qpol_policy_get_semantic_level_by_name(const qpol_policy_t * policy, const char *name, const qpol_semantic_level_t ** datum);
+	extern int qpol_semantic_level_add_cats_by_name(const qpol_policy_t * policy, const qpol_semantic_level_t * level, const char *low, const char *high);
+	extern int qpol_mls_level_from_semantic_level(const qpol_policy_t * policy, const qpol_semantic_level_t * src, qpol_mls_level_t **dest);
+	extern void qpol_semantic_level_destroy(qpol_semantic_level_t * level);
+
+/* semantic ranges */
+	extern int qpol_policy_get_mls_range_from_mls_levels(const qpol_policy_t * policy, const qpol_mls_level_t * low, const qpol_mls_level_t *high, qpol_mls_range_t **dest);
 
 #ifdef	__cplusplus
 }
